@@ -2,7 +2,6 @@ const std = @import("std");
 
 const RedisValue = @import("./types.zig").RedisValue;
 
-/// Redis Parser Error types
 pub const RedisParserError = error{
     InvalidProtocol,
     InvalidLength,
@@ -14,7 +13,6 @@ pub const RedisParserError = error{
     InvalidCharacter,
 };
 
-/// Simple Redis Protocol Parser
 pub const RedisParser = struct {
     allocator: std.mem.Allocator,
     buffer: std.ArrayList(u8),
@@ -38,7 +36,6 @@ pub const RedisParser = struct {
         self.buffer.clearRetainingCapacity();
     }
 
-    /// Parse a Redis value from the buffer
     pub fn parse(self: *RedisParser) RedisParserError!?RedisValue {
         if (self.buffer.items.len == 0) {
             return null;
@@ -47,18 +44,13 @@ pub const RedisParser = struct {
         const data = self.buffer.items;
 
         var index: usize = 0;
-        // Обрабатываем возможные ошибки при парсинге, чтобы освободить память
+
         const result = self.parseValue(data, &index) catch |err| {
-            // Не изменяем буфер в случае ошибки, чтобы можно было попытаться снова,
-            // когда поступит больше данных
             return err;
         };
 
-        // Удаляем обработанные данные из буфера
         if (index > 0) {
             self.buffer.replaceRange(0, index, &.{}) catch {
-                // ИСПРАВЛЕНИЕ: Если не удалось обновить буфер, освобождаем
-                // результат перед возвратом ошибки
                 result.deinit(self.allocator);
                 return RedisParserError.OutOfMemory;
             };
@@ -73,7 +65,7 @@ pub const RedisParser = struct {
         }
 
         const type_char = data[index.*];
-        index.* += 1; // Move past the type character
+        index.* += 1;
 
         switch (type_char) {
             '+' => return self.parseSimpleString(data, index),
@@ -89,11 +81,10 @@ pub const RedisParser = struct {
         const start = index.*;
         var i = start;
 
-        // Find the end of the line (CR LF)
         while (i + 1 < data.len) {
             if (data[i] == '\r' and data[i + 1] == '\n') {
                 const line = data[start..i];
-                index.* = i + 2; // Skip CR LF
+                index.* = i + 2;
                 return line;
             }
             i += 1;
@@ -142,7 +133,6 @@ pub const RedisParser = struct {
             return RedisParserError.InvalidLength;
         }
 
-        // Check if we have enough data
         if (index.* + @as(usize, @intCast(len)) + 2 > data.len) {
             return RedisParserError.Incomplete;
         }
@@ -151,15 +141,12 @@ pub const RedisParser = struct {
         const str_end = str_start + @as(usize, @intCast(len));
         const str_slice = data[str_start..str_end];
 
-        // Check for CRLF at the end of the string
         if (data[str_end] != '\r' or data[str_end + 1] != '\n') {
             return RedisParserError.InvalidProtocol;
         }
 
-        // Move index past the string and CRLF
         index.* = str_end + 2;
 
-        // Create a copy of the string
         const str = try self.allocator.dupe(u8, str_slice);
         errdefer self.allocator.free(str);
 
@@ -179,29 +166,21 @@ pub const RedisParser = struct {
             return RedisParserError.InvalidLength;
         }
 
-        // Создаем массив для элементов
         var array = std.ArrayList(RedisValue).init(self.allocator);
-        // ИСПРАВЛЕНИЕ: используем блок errdefer для освобождения всего массива и элементов
-        // при возникновении ошибки в процессе парсинга
+
         errdefer {
-            // Освобождаем каждый элемент
             for (array.items) |item| {
                 item.deinit(self.allocator);
             }
-            // Освобождаем сам массив
+
             array.deinit();
         }
 
-        // Обрабатываем все элементы массива
         var i: usize = 0;
         while (i < len) : (i += 1) {
-            // Парсим следующий элемент
             var element = try self.parseValue(data, index);
 
-            // Попытка добавить элемент в массив
             array.append(element) catch |err| {
-                // ИСПРАВЛЕНИЕ: Если не удалось добавить элемент в массив,
-                // освобождаем его память перед возвратом ошибки
                 element.deinit(self.allocator);
                 return err;
             };
@@ -211,7 +190,6 @@ pub const RedisParser = struct {
     }
 };
 
-/// Helper function to create a new RedisParser
 pub fn createRedisParser(allocator: std.mem.Allocator) RedisParser {
     return RedisParser.init(allocator);
 }

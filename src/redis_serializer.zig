@@ -10,7 +10,6 @@ pub const RedisSerializerError = error{
     NoSpaceLeft,
 };
 
-/// Redis Serializer
 pub const RedisSerializer = struct {
     allocator: std.mem.Allocator,
     buffer: std.ArrayList(u8),
@@ -30,14 +29,12 @@ pub const RedisSerializer = struct {
         self.buffer.clearRetainingCapacity();
     }
 
-    /// Serialize a Redis value to the buffer
     pub fn serialize(self: *RedisSerializer, value: RedisValue) RedisSerializerError![]const u8 {
         self.reset();
         try self.serializeValue(value);
         return self.buffer.items;
     }
 
-    /// Serialize multiple Redis values to the buffer
     pub fn serializeMultiple(self: *RedisSerializer, values: []const RedisValue) RedisSerializerError![]const u8 {
         self.reset();
 
@@ -117,13 +114,11 @@ pub const RedisSerializer = struct {
     }
 
     fn appendFormatted(self: *RedisSerializer, comptime format: []const u8, args: anytype) RedisSerializerError!void {
-        // Форматирование с использованием временного буфера
-        var temp_buf: [128]u8 = undefined; // Увеличиваем размер буфера для безопасности
+        var temp_buf: [128]u8 = undefined;
         const formatted = try std.fmt.bufPrint(&temp_buf, format, args);
         try self.buffer.appendSlice(formatted);
     }
 
-    /// Create a new Redis value from a string
     pub fn createSimpleString(allocator: std.mem.Allocator, str: []const u8) RedisSerializerError!RedisValue {
         const str_copy = try allocator.dupe(u8, str);
         errdefer allocator.free(str_copy);
@@ -131,7 +126,6 @@ pub const RedisSerializer = struct {
         return RedisValue{ .SimpleString = str_copy };
     }
 
-    /// Create a new Redis error value from a string
     pub fn createError(allocator: std.mem.Allocator, str: []const u8) RedisSerializerError!RedisValue {
         const str_copy = try allocator.dupe(u8, str);
         errdefer allocator.free(str_copy);
@@ -139,12 +133,10 @@ pub const RedisSerializer = struct {
         return RedisValue{ .Error = str_copy };
     }
 
-    /// Create a new Redis integer value
     pub fn createInteger(num: i64) RedisValue {
         return RedisValue{ .Integer = num };
     }
 
-    /// Create a new Redis bulk string value
     pub fn createBulkString(allocator: std.mem.Allocator, maybe_str: ?[]const u8) RedisSerializerError!RedisValue {
         if (maybe_str) |str| {
             const str_copy = try allocator.dupe(u8, str);
@@ -156,7 +148,6 @@ pub const RedisSerializer = struct {
         }
     }
 
-    /// Create a new Redis array value
     pub fn createArray(allocator: std.mem.Allocator, items: []const RedisValue) RedisSerializerError!RedisValue {
         if (items.len == 0) {
             const array = std.ArrayList(RedisValue).init(allocator);
@@ -184,7 +175,6 @@ pub const RedisSerializer = struct {
                 },
                 .Array => |maybe_array| {
                     if (maybe_array) |arr| {
-                        // Создаем копию вложенного массива
                         var inner_array = std.ArrayList(RedisValue).init(allocator);
                         errdefer inner_array.deinit();
 
@@ -205,7 +195,6 @@ pub const RedisSerializer = struct {
                                     inner_copy = try createBulkString(allocator, maybe_inner_str);
                                 },
                                 .Array => |_| {
-                                    // Для вложенных массивов 2-го уровня просто создаем пустой массив для простоты
                                     inner_copy = RedisValue{ .Array = std.ArrayList(RedisValue).init(allocator) };
                                 },
                                 .Null => {
@@ -232,13 +221,11 @@ pub const RedisSerializer = struct {
         return RedisValue{ .Array = array };
     }
 
-    /// Create a new Redis null value
     pub fn createNull() RedisValue {
         return RedisValue{ .Null = {} };
     }
 };
 
-/// Create a new Redis serializer
 pub fn createRedisSerializer(allocator: std.mem.Allocator) RedisSerializer {
     return RedisSerializer.init(allocator);
 }

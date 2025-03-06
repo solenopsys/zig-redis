@@ -1,6 +1,5 @@
 const std = @import("std");
 
-/// Redis Value Types
 pub const RedisValueType = enum {
     SimpleString,
     Error,
@@ -10,7 +9,6 @@ pub const RedisValueType = enum {
     Null,
 };
 
-/// Redis Value Union
 pub const RedisValue = union(RedisValueType) {
     SimpleString: []const u8,
     Error: []const u8,
@@ -23,7 +21,7 @@ pub const RedisValue = union(RedisValueType) {
         switch (self) {
             .SimpleString => |str| allocator.free(str),
             .Error => |str| allocator.free(str),
-            .Integer => {}, // целочисленные значения не требуют освобождения памяти
+            .Integer => {},
             .BulkString => |maybe_str| if (maybe_str) |str| allocator.free(str),
             .Array => |array| {
                 if (array) |arr| {
