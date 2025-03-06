@@ -2,6 +2,9 @@ const std = @import("std");
 const testing = std.testing;
 const parser = @import("redis_parser.zig");
 
+const types = @import("types.zig");
+const RedisValue = types.RedisValue;
+
 test "parse simple string" {
     var redis_parser = parser.createRedisParser(testing.allocator);
     defer redis_parser.deinit();

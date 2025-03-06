@@ -1,7 +1,8 @@
 const std = @import("std");
 const parser = @import("redis_parser.zig");
-const RedisValue = parser.RedisValue;
-const RedisValueType = parser.RedisValueType;
+const types = @import("./types.zig");
+const RedisValue = types.RedisValue;
+const RedisValueType = types.RedisValueType;
 
 pub const RedisSerializerError = error{
     OutOfMemory,
