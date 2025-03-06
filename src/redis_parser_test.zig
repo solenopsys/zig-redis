@@ -17,6 +17,153 @@ test "parse simple string" {
     }
 }
 
+test "array memory leak" {
+    var redis_parser = parser.createRedisParser(testing.allocator);
+    defer redis_parser.deinit();
+
+    // Простой массив
+    const array_data = "*3\r\n$3\r\nfoo\r\n$3\r\nbar\r\n$3\r\nbaz\r\n";
+
+    // Несколько циклов для выявления утечек
+    for (0..10) |i| {
+        redis_parser.reset();
+        try redis_parser.feed(array_data);
+
+        const result = try redis_parser.parse();
+
+        // Главное - правильно освободить результат
+        defer if (result) |value| value.deinit(testing.allocator);
+
+        // Небольшая проверка, чтобы убедиться, что парсинг работает
+        if (i == 0) {
+            try testing.expect(result != null);
+            switch (result.?) {
+                .Array => |maybe_array| {
+                    try testing.expect(maybe_array != null);
+                    try testing.expectEqual(@as(usize, 3), maybe_array.?.items.len);
+                },
+                else => try testing.expect(false),
+            }
+        }
+    }
+
+    // testing.allocator автоматически проверит на утечки
+}
+
+test "parseArray memory leak" {
+    // Создаем парсер с testing.allocator, который отслеживает утечки
+    var redis_parser = parser.createRedisParser(testing.allocator);
+    defer redis_parser.deinit();
+
+    // Вложенный массив - структура, которая вызывала утечки памяти
+    const nested_array = "*3\r\n$3\r\nkey\r\n*2\r\n$5\r\nfield\r\n$5\r\nvalue\r\n$4\r\ntest\r\n";
+
+    // Проверяем несколько раз, чтобы утечка стала заметной
+    for (0..5) |_| {
+        // Сбрасываем парсер перед каждой итерацией
+        redis_parser.reset();
+
+        // Подаем данные массива
+        try redis_parser.feed(nested_array);
+
+        // Парсим и проверяем результат
+        const result = try redis_parser.parse();
+
+        // testing.allocator автоматически обнаружит утечку, если
+        // не освободить результат
+        defer if (result) |value| value.deinit(testing.allocator);
+
+        // Проверяем, что результат не null
+        try testing.expect(result != null);
+
+        // Проверяем, что результат - массив
+        switch (result.?) {
+            .Array => |maybe_array| {
+                try testing.expect(maybe_array != null);
+                try testing.expectEqual(@as(usize, 3), maybe_array.?.items.len);
+            },
+            else => try testing.expect(false), // Неправильный тип
+        }
+    }
+
+    // Если test завершится успешно и нет panic от testing.allocator,
+    // значит утечек нет
+}
+
+test "nested arrays memory leak" {
+    var redis_parser = parser.createRedisParser(testing.allocator);
+    defer redis_parser.deinit();
+
+    // Правильно форматированный вложенный массив в формате RESP
+    // *2 - массив из 2 элементов:
+    //   1. *2 - массив из 2 элементов (foo, bar)
+    //   2. *1 - массив из 1 элемента (baz)
+    const nested_array = "*2\r\n*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n*1\r\n$3\r\nbaz\r\n";
+
+    // Парсим его несколько раз
+    for (0..3) |_| {
+        redis_parser.reset();
+        try redis_parser.feed(nested_array);
+
+        const result = try redis_parser.parse();
+        defer if (result) |value| value.deinit(testing.allocator);
+
+        try testing.expect(result != null);
+
+        // Проверяем, что это массив правильной структуры
+        switch (result.?) {
+            .Array => |maybe_array| {
+                try testing.expect(maybe_array != null);
+                try testing.expectEqual(@as(usize, 2), maybe_array.?.items.len);
+
+                // Проверяем первый элемент - тоже массив из 2 элементов
+                switch (maybe_array.?.items[0]) {
+                    .Array => |maybe_inner1| {
+                        try testing.expect(maybe_inner1 != null);
+                        try testing.expectEqual(@as(usize, 2), maybe_inner1.?.items.len);
+
+                        // Проверяем строковые значения
+                        switch (maybe_inner1.?.items[0]) {
+                            .BulkString => |maybe_str| {
+                                try testing.expect(maybe_str != null);
+                                try testing.expectEqualStrings("foo", maybe_str.?);
+                            },
+                            else => try testing.expect(false),
+                        }
+
+                        switch (maybe_inner1.?.items[1]) {
+                            .BulkString => |maybe_str| {
+                                try testing.expect(maybe_str != null);
+                                try testing.expectEqualStrings("bar", maybe_str.?);
+                            },
+                            else => try testing.expect(false),
+                        }
+                    },
+                    else => try testing.expect(false),
+                }
+
+                // Проверяем второй элемент - массив из 1 элемента
+                switch (maybe_array.?.items[1]) {
+                    .Array => |maybe_inner2| {
+                        try testing.expect(maybe_inner2 != null);
+                        try testing.expectEqual(@as(usize, 1), maybe_inner2.?.items.len);
+
+                        switch (maybe_inner2.?.items[0]) {
+                            .BulkString => |maybe_str| {
+                                try testing.expect(maybe_str != null);
+                                try testing.expectEqualStrings("baz", maybe_str.?);
+                            },
+                            else => try testing.expect(false),
+                        }
+                    },
+                    else => try testing.expect(false),
+                }
+            },
+            else => try testing.expect(false),
+        }
+    }
+}
+
 test "parse error" {
     var redis_parser = parser.createRedisParser(testing.allocator);
     defer redis_parser.deinit();

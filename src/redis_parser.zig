@@ -83,11 +83,21 @@ pub const RedisParser = struct {
         const data = self.buffer.items;
 
         var index: usize = 0;
-        const result = try self.parseValue(data, &index);
+        // Обрабатываем возможные ошибки при парсинге, чтобы освободить память
+        const result = self.parseValue(data, &index) catch |err| {
+            // Не изменяем буфер в случае ошибки, чтобы можно было попытаться снова,
+            // когда поступит больше данных
+            return err;
+        };
 
-        // Remove the parsed data from the buffer
+        // Удаляем обработанные данные из буфера
         if (index > 0) {
-            try self.buffer.replaceRange(0, index, &.{});
+            self.buffer.replaceRange(0, index, &.{}) catch {
+                // ИСПРАВЛЕНИЕ: Если не удалось обновить буфер, освобождаем
+                // результат перед возвратом ошибки
+                result.deinit(self.allocator);
+                return RedisParserError.OutOfMemory;
+            };
         }
 
         return result;
@@ -205,19 +215,32 @@ pub const RedisParser = struct {
             return RedisParserError.InvalidLength;
         }
 
+        // Создаем массив для элементов
         var array = std.ArrayList(RedisValue).init(self.allocator);
+        // ИСПРАВЛЕНИЕ: используем блок errdefer для освобождения всего массива и элементов
+        // при возникновении ошибки в процессе парсинга
         errdefer {
+            // Освобождаем каждый элемент
             for (array.items) |item| {
                 item.deinit(self.allocator);
             }
+            // Освобождаем сам массив
             array.deinit();
         }
 
+        // Обрабатываем все элементы массива
         var i: usize = 0;
         while (i < len) : (i += 1) {
-            // Parse the next element in the array
-            const element = try self.parseValue(data, index);
-            try array.append(element);
+            // Парсим следующий элемент
+            var element = try self.parseValue(data, index);
+
+            // Попытка добавить элемент в массив
+            array.append(element) catch |err| {
+                // ИСПРАВЛЕНИЕ: Если не удалось добавить элемент в массив,
+                // освобождаем его память перед возвратом ошибки
+                element.deinit(self.allocator);
+                return err;
+            };
         }
 
         return RedisValue{ .Array = array };
