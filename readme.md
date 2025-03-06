@@ -1,6 +1,6 @@
 zig build-exe -O ReleaseFast bench.zig && ./bench
 
-
+```
 Redis Benchmark
 Running benchmark with 100000 iterations
 Warming up with 1000 iterations...
@@ -14,6 +14,7 @@ Deserialization Results:
 Total time: 4115.83 ms
 Operations per second: 24296.42
 Time per operation: 41158.329 ns
+```
 
 Нужны  оптимизации парсеса
 - SIMD-оптимизация
