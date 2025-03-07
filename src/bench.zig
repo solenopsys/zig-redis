@@ -1,6 +1,6 @@
 const std = @import("std");
-const parser = @import("redis_parser.zig");
-const serializer = @import("redis_serializer.zig");
+const parser = @import("../core/redis_parser.zig");
+const serializer = @import("../core/redis_serializer.zig");
 const time = std.time;
 
 const Config = struct {

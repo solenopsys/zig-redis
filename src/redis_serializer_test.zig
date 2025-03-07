@@ -1,8 +1,8 @@
 const std = @import("std");
 const testing = std.testing;
-const parser = @import("redis_parser.zig");
-const serializer = @import("redis_serializer.zig");
-const types = @import("types.zig");
+const parser = @import("./core/redis_parser.zig");
+const serializer = @import("./core/redis_serializer.zig");
+const types = @import("./core/types.zig");
 
 const RedisValue = types.RedisValue;
 
